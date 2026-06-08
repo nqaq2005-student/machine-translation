@@ -1,0 +1,17 @@
+# Cấu hình Kiến trúc Mô hình (~50M Params)
+model:
+  vocab_size: 32000      # Dùng chung cho cả Anh và Việt
+  d_model: 512           # Chiều không gian vector
+  num_heads: 8           # Số lượng Attention Heads
+  num_layers: 6          # Số layer cho Encoder và Decoder
+  d_ff: 1024             # Kích thước lớp Feed-Forward (giảm để tiết kiệm params)
+  max_seq_len: 128       # Chiều dài câu tối đa
+  dropout: 0.1
+
+# Cấu hình Huấn luyện (Tối ưu cho A100 40GB)
+training:
+  batch_size: 256        # Batch size lớn tận dụng VRAM
+  epochs: 15
+  learning_rate: 5.0e-4
+  warmup_steps: 4000
+  label_smoothing: 0.1

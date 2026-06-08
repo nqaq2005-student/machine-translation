@@ -1,0 +1,7 @@
+
+torch>=2.0.0
+tokenizers>=0.13.0
+datasets>=2.14.0
+PyYAML>=6.0
+tqdm>=4.65.0
+sacrebleu>=2.3.0
