@@ -14,8 +14,8 @@ def process_split(dataset, split_name, output_file):
 
     with open(output_file, 'w', encoding='utf-8') as f:
         # Lấy đúng phần dữ liệu của split tương ứng
-        for item in tqdm(dataset[split_name]):
-            translation = item.get('translation', item)
+        for item in tqdm(dataset[split_name], desc=f"Đang xử lý tập {split_name}", leave=False):
+            translation = item.get('translation', item) 
             en_text = translation.get('English', '').strip()
             vi_text = translation.get('Vietnamese', '').strip()
 

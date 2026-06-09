@@ -37,6 +37,10 @@ def get_lr_scheduler(optimizer, warmup_steps=4000, d_model=512):
         lr_lambda=lambda step: (d_model**-0.5) * min((step+1)**-0.5, (step+1) * warmup_steps**-1.5)
     )
 
+def load_config(config_path="configs/config.yaml"):
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
+
 
 def load_mixed_validation(file_path, limit_per_direction=150):
     """

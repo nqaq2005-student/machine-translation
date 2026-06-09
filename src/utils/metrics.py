@@ -3,7 +3,7 @@ import sacrebleu
 from translate import translate_sentence
 
 
-def calculate_bleu(model, tokenizer, val_data, max_len, device):
+def calculate_bleu(model, tokenizer, val_data, max_len, device, compute_dtype):
     """
     Tính điểm BLEU cho danh sách hỗn hợp các câu en2vi và vi2en.
     """
@@ -24,13 +24,13 @@ def calculate_bleu(model, tokenizer, val_data, max_len, device):
                 sentence=src_text,
                 direction=direction,
                 max_len=max_len,
-                device=device
+                device=device,
+                compute_dtype=compute_dtype
             )
 
             predictions.append(pred_text)
             references.append(ref_text)
 
-    # Đưa mô hình quay lại trạng thái train
     model.train()
 
     # sacrebleu yêu cầu references phải nằm trong list của list
