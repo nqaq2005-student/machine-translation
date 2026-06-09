@@ -16,8 +16,8 @@ def process_split(dataset, split_name, output_file):
         # Lấy đúng phần dữ liệu của split tương ứng
         for item in tqdm(dataset[split_name]):
             translation = item.get('translation', item)
-            en_text = translation.get('en', '').strip()
-            vi_text = translation.get('vi', '').strip()
+            en_text = translation.get('English', '').strip()
+            vi_text = translation.get('Vietnamese', '').strip()
 
             # 1. Bỏ qua các câu rỗng
             if not en_text or not vi_text:
@@ -64,7 +64,7 @@ def create_txt_for_tokenizer(jsonl_file):
     print(f"Đã xuất xong text cho Tokenizer tại {en_path} và {vi_path}")
 
 
-def main(dataset_name="vinai/PhoMT"):
+def main(dataset_name="KietReal/Vietnamese-English-translation"):
     print(f"Đang tải toàn bộ dataset {dataset_name} từ Hugging Face...")
     # Không truyền tham số split, thư viện sẽ tải về dạng một DatasetDict chứa cả train, dev, test
     dataset = load_dataset(dataset_name)
@@ -74,7 +74,7 @@ def main(dataset_name="vinai/PhoMT"):
 
     # 2. Xử lý tập Dev (Dùng làm Validation tính BLEU)
     # File này sẽ tự động ăn khớp với đường dẫn val_file trong evaluate.py của chúng ta
-    process_split(dataset, "dev", "data/processed/val_data.jsonl")
+    process_split(dataset, "validation", "data/processed/val_data.jsonl")
 
     # 3. Tạo data cho Tokenizer từ tập Train
     create_txt_for_tokenizer("data/processed/train_data.jsonl")
