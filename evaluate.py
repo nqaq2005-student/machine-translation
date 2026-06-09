@@ -6,22 +6,28 @@ import sacrebleu
 from tqdm import tqdm
 from tokenizers import Tokenizer
 
-# Import kiến trúc model và hàm dịch từ các file đã viết
 from src.model.transformer import Transformer
 from translate import translate_sentence
 from src.utils.helpers import load_jsonl_dataset
-
-def load_config(config_path="configs/config.yaml"):
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+from src.utils.helpers import load_config
 
 
-
-def evaluate_checkpoint(model, tokenizer, checkpoint_path, sources, references, direction, max_len, device):
+def evaluate_checkpoint(model, tokenizer, checkpoint_path, sources, references, direction, max_len, device,
+                        compute_dtype):
     """Tải trọng số và tính BLEU Score cho 1 checkpoint"""
     # 1. Tải trọng số
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    state_dict = checkpoint['model_state_dict']
+
+    # --- SỬA LỖI KEY DATAPARALLEL KHI LOAD TRỌNG SỐ TỪ FILE ---
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+
+    for k, v in state_dict.items():
+        name = k[7:] if k.startswith('module.') else k
+        new_state_dict[name] = v
+
+    model.load_state_dict(new_state_dict)
     model.eval()
 
     predictions = []
@@ -29,18 +35,21 @@ def evaluate_checkpoint(model, tokenizer, checkpoint_path, sources, references, 
     # 2. Dịch từng câu trong tập Validation
     print(f"\nĐang đánh giá: {os.path.basename(checkpoint_path)}")
     for src in tqdm(sources, desc="Translating", leave=False):
+        # ⚡ Truyền compute_dtype vào hàm dịch
         pred_text = translate_sentence(
             model=model,
             tokenizer=tokenizer,
             sentence=src,
             direction=direction,
             max_len=max_len,
-            device=device
+            device=device,
+            compute_dtype=compute_dtype
         )
         predictions.append(pred_text)
 
     # 3. Tính điểm BLEU bằng SacreBLEU
-    # SacreBLEU yêu cầu references phải nằm trong list of lists: [ [ref1, ref2], [ref1, ref2] ]
+    if not predictions:
+        return 0.0
     bleu = sacrebleu.corpus_bleu(predictions, [references])
 
     return bleu.score
@@ -51,15 +60,24 @@ def main():
     model_cfg = cfg['model']
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    compute_dtype = torch.float32
+    if torch.cuda.is_available():
+        if torch.cuda.get_device_capability(0)[0] >= 8:
+            compute_dtype = torch.bfloat16
+        else:
+            compute_dtype = torch.float16
+
     print("Đang khởi tạo môi trường đánh giá...")
     tokenizer = Tokenizer.from_file("data/processed/tokenizer-envi.json")
 
+    # ⚡ Bổ sung tham số dropout
     model = Transformer(
         vocab_size=model_cfg['vocab_size'],
         d_model=model_cfg['d_model'],
         num_heads=model_cfg['num_heads'],
         num_layers=model_cfg['num_layers'],
-        d_ff=model_cfg['d_ff']
+        d_ff=model_cfg['d_ff'],
+        dropout=model_cfg['dropout']
     ).to(device)
 
     # Lấy danh sách toàn bộ các file .pt trong thư mục checkpoints, sắp xếp theo thời gian tạo
@@ -92,7 +110,8 @@ def main():
             references=references,
             direction=direction_to_test,
             max_len=model_cfg['max_seq_len'],
-            device=device
+            device=device,
+            compute_dtype=compute_dtype  # ⚡ Truyền biến vào hàm
         )
         results[os.path.basename(ckpt)] = score
         print(f"-> Điểm BLEU: {score:.2f}")
