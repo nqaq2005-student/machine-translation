@@ -36,6 +36,7 @@ class PositionalEncoding(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, vocab_size, d_model, num_layers, num_heads, d_ff, dropout=0.1):
         super().__init__()
+        self.d_model = d_model
         self.emb = nn.Embedding(vocab_size, d_model)
         self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
         # Stack nhiều EncoderLayer lên nhau bằng nn.ModuleList
@@ -54,6 +55,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, vocab_size, d_model, num_layers, num_heads, d_ff, dropout=0.1):
         super().__init__()
+        self.d_model = d_model
         self.emb = nn.Embedding(vocab_size, d_model)
         self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
         self.layers = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])

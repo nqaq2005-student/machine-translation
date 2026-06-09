@@ -46,9 +46,7 @@ class BilingualDataset(Dataset):
         src_padding_len = self.max_seq_len - len(src_tokens) - 2
         tgt_padding_len = self.max_seq_len - len(tgt_tokens) - 1
 
-        # ---------------------------------------------------------
         # XÂY DỰNG TENSORS ĐẦU VÀO VÀ NHÃN (LABELS)
-        # ---------------------------------------------------------
 
         # Encoder Input: <Direction> + Source Tokens + <EOS> + <PAD>...
         encoder_input = torch.tensor(
@@ -63,15 +61,12 @@ class BilingualDataset(Dataset):
         )
 
         # Label (Dùng để tính Loss): Target Tokens + <EOS> + <PAD>...
-        # LƯU Ý: Label bị dịch sang trái 1 bước so với decoder_input
         label = torch.tensor(
             tgt_tokens + [self.eos_id] + [self.pad_id] * tgt_padding_len,
             dtype=torch.int64
         )
 
-        # ---------------------------------------------------------
         # TẠO ATTENTION MASKS (Che lấp thông tin)
-        # ---------------------------------------------------------
 
         # Encoder Mask: Đánh dấu True ở những vị trí CÓ TỪ (khác PAD), False ở vị trí PAD.
         # Shape: (1, 1, max_seq_len) để chuẩn bị broadcast trên nhiều Attention Heads
@@ -81,7 +76,6 @@ class BilingualDataset(Dataset):
         decoder_pad_mask = (decoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
 
         # Causal Mask: Ma trận tam giác (True ở tam giác dưới, False ở tam giác trên)
-        # Mục đích: Ngăn token hiện tại nhìn thấy các token ở tương lai
         causal_mask = torch.triu(
             torch.ones((1, self.max_seq_len, self.max_seq_len)), diagonal=1
         ).type(torch.int) == 0

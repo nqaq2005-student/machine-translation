@@ -31,6 +31,14 @@ def train_tokenizer(data_files, vocab_size=32000, save_path="data/processed/toke
 
 
 if __name__ == "__main__":
-    # Giả sử bạn đã gom chung tất cả câu tiếng Anh vào train.en và tiếng Việt vào train.vi
-    files = ["data/raw/train.en", "data/raw/train.vi"]
+    files = [
+        "data/raw/corpus.en",
+        "data/raw/corpus.vi"
+    ]
+    # Kiểm tra tồn tại file
+    for f in files:
+        if not os.path.exists(f):
+            print(f"LỖI: Không tìm thấy file {f}")
+            exit(1)
+
     train_tokenizer(files)
