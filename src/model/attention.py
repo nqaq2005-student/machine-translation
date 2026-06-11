@@ -35,7 +35,7 @@ class MultiHeadAttention (nn.Module):
             dropout_p=self.dropout if self.training else 0.0
         )
 
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
+        attn_output = attn_output.transpose(1, 2).reshape(batch_size, -1, self.d_model)
 
         return self.W_o(attn_output)
 

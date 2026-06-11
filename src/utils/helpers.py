@@ -2,6 +2,7 @@ import json
 import torch
 import random
 import numpy as np
+import yaml
 
 def load_jsonl_dataset(file_path, direction="en2vi", limit=None):
     sources, references = [], []
@@ -30,12 +31,15 @@ def save_checkpoint(state, filename):
 def load_checkpoint(filename, device):
     return torch.load(filename, map_location=device)
 
-def get_lr_scheduler(optimizer, warmup_steps=4000, d_model=512):
-    # Trả về một hàm lambda đơn giản cho learning rate scheduler
-    return torch.optim.lr_scheduler.LambdaLR(
-        optimizer,
-        lr_lambda=lambda step: (d_model**-0.5) * min((step+1)**-0.5, (step+1) * warmup_steps**-1.5)
-    )
+def get_lr_scheduler(optimizer, warmup_steps=4000):
+
+    def lr_lambda(step):
+        current_step = step + 1
+        if current_step <= warmup_steps:
+            return current_step / warmup_steps
+        return (warmup_steps / current_step) ** 0.5
+        
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 def load_config(config_path="configs/config.yaml"):
     with open(config_path, "r") as f:
