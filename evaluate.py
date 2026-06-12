@@ -1,59 +1,53 @@
 import os
 import glob
 import torch
-import yaml
 import sacrebleu
+import re
+import csv
 from tqdm import tqdm
 from tokenizers import Tokenizer
 
 from src.model.transformer import Transformer
 from translate import translate_sentence
-from src.utils.helpers import load_jsonl_dataset
-from src.utils.helpers import load_config
+from src.utils.helpers import load_jsonl_dataset, load_config
 
+def clean_detokenize(text):
+    """Dọn dẹp khoảng trắng thừa trước dấu câu để chuẩn hóa đánh giá SacreBLEU."""
+    return re.sub(r'\s+([?.!,:;])', r'\1', text)
 
-def evaluate_checkpoint(model, tokenizer, checkpoint_path, sources, references, direction, max_len, device,
-                        compute_dtype):
+def evaluate_checkpoint(model, tokenizer, checkpoint_path, sources, references, direction, max_len, device, compute_dtype):
     """Tải trọng số và tính BLEU Score cho 1 checkpoint"""
-    # 1. Tải trọng số
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    state_dict = checkpoint['model_state_dict']
+    state_dict = checkpoint.get('model_state_dict', checkpoint) 
 
-    # --- SỬA LỖI KEY DATAPARALLEL KHI LOAD TRỌNG SỐ TỪ FILE ---
-    from collections import OrderedDict
-    new_state_dict = OrderedDict()
-
-    for k, v in state_dict.items():
-        name = k[7:] if k.startswith('module.') else k
-        new_state_dict[name] = v
+    # Cởi bỏ áo DDP 'module.' một cách chuyên nghiệp
+    new_state_dict = {k.removeprefix('module.'): v for k, v in state_dict.items()}
 
     model.load_state_dict(new_state_dict)
     model.eval()
 
     predictions = []
 
-    # 2. Dịch từng câu trong tập Validation
-    print(f"\nĐang đánh giá: {os.path.basename(checkpoint_path)}")
-    for src in tqdm(sources, desc="Translating", leave=False):
-        # ⚡ Truyền compute_dtype vào hàm dịch
-        pred_text = translate_sentence(
-            model=model,
-            tokenizer=tokenizer,
-            sentence=src,
-            direction=direction,
-            max_len=max_len,
-            device=device,
-            compute_dtype=compute_dtype
-        )
-        predictions.append(pred_text)
+    print(f"  Đang dịch: {os.path.basename(checkpoint_path)}...")
+    with torch.no_grad():
+        for src in tqdm(sources, desc="  Tiến độ", leave=False):
+            pred_text = translate_sentence(
+                model=model,
+                tokenizer=tokenizer,
+                sentence=src,
+                direction=direction,
+                max_len=max_len,
+                device=device,
+                compute_dtype=compute_dtype
+            )
+            predictions.append(clean_detokenize(pred_text))
 
-    # 3. Tính điểm BLEU bằng SacreBLEU
     if not predictions:
         return 0.0
-    bleu = sacrebleu.corpus_bleu(predictions, [references])
-
+        
+    cleaned_references = [clean_detokenize(ref) for ref in references]
+    bleu = sacrebleu.corpus_bleu(predictions, [cleaned_references])
     return bleu.score
-
 
 def main():
     cfg = load_config()
@@ -70,7 +64,6 @@ def main():
     print("Đang khởi tạo môi trường đánh giá...")
     tokenizer = Tokenizer.from_file("data/processed/tokenizer-envi.json")
 
-    # ⚡ Bổ sung tham số dropout
     model = Transformer(
         vocab_size=model_cfg['vocab_size'],
         d_model=model_cfg['d_model'],
@@ -80,59 +73,64 @@ def main():
         dropout=model_cfg['dropout']
     ).to(device)
 
-    # Lấy danh sách toàn bộ các file .pt trong thư mục checkpoints, sắp xếp theo thời gian tạo
     checkpoint_files = sorted(glob.glob("checkpoints/*.pt"), key=os.path.getmtime)
-
     if not checkpoint_files:
-        print("Không tìm thấy file checkpoint nào trong thư mục 'checkpoints/'.")
+        print("❌ Không tìm thấy file checkpoint nào trong thư mục 'checkpoints/'.")
         return
 
-    # Lấy 500 câu Validation theo chiều Anh -> Việt để test
-    val_file = "data/processed/val_data.jsonl"  # Nhớ tạo file này nhé
-    direction_to_test = "en2vi"
+    val_file = "data/processed/val_data.jsonl" 
+    
+    # DANH SÁCH 2 CHIỀU CẦN ĐÁNH GIÁ
+    directions_to_test = ["en2vi", "vi2en"]
 
-    print(f"Đang tải dữ liệu Validation từ {val_file}...")
-    sources, references = load_jsonl_dataset(val_file, direction=direction_to_test, limit=500)
+    for direction in directions_to_test:
+        print("\n" + "=" * 60)
+        print(f"🚀 BẮT ĐẦU ĐÁNH GIÁ CHIỀU: {direction.upper()} ".center(60))
+        print("=" * 60)
 
-    print(f"Số lượng câu đánh giá: {len(sources)} câu ({direction_to_test})")
-    print("-" * 50)
+        # ⚡ BỎ GIỚI HẠN: Không dùng biến limit nữa để nạp full tập dữ liệu
+        print(f"Đang nạp toàn bộ dữ liệu Validation ({direction})...")
+        sources, references = load_jsonl_dataset(val_file, direction=direction)
+        print(f"-> Đã nạp xong {len(sources)} câu.")
+        print("-" * 60)
 
-    # Từ điển lưu kết quả
-    results = {}
+        results = {}
+        best_ckpt = None
+        best_score = -1
 
-    # Quét qua từng checkpoint để chấm điểm
-    for ckpt in checkpoint_files:
-        score = evaluate_checkpoint(
-            model=model,
-            tokenizer=tokenizer,
-            checkpoint_path=ckpt,
-            sources=sources,
-            references=references,
-            direction=direction_to_test,
-            max_len=model_cfg['max_seq_len'],
-            device=device,
-            compute_dtype=compute_dtype  # ⚡ Truyền biến vào hàm
-        )
-        results[os.path.basename(ckpt)] = score
-        print(f"-> Điểm BLEU: {score:.2f}")
+        # Quét qua từng checkpoint
+        for ckpt in checkpoint_files:
+            score = evaluate_checkpoint(
+                model=model,
+                tokenizer=tokenizer,
+                checkpoint_path=ckpt,
+                sources=sources,
+                references=references,
+                direction=direction,
+                max_len=model_cfg['max_seq_len'],
+                device=device,
+                compute_dtype=compute_dtype 
+            )
+            ckpt_name = os.path.basename(ckpt)
+            results[ckpt_name] = score
+            print(f"  -> Điểm BLEU: {score:.2f}\n")
+            
+            if score > best_score:
+                best_score = score
+                best_ckpt = ckpt_name
 
-    # In Bảng tổng sắp
-    print("\n" + "=" * 40)
-    print(" BẢNG TỔNG SẮP BLEU SCORE".center(40))
-    print("=" * 40)
-
-    best_ckpt = None
-    best_score = -1
-
-    for ckpt, score in results.items():
-        print(f"{ckpt:<30} : {score:>5.2f}")
-        if score > best_score:
-            best_score = score
-            best_ckpt = ckpt
-
-    print("-" * 40)
-    print(f"🏆 Checkpoint tốt nhất: {best_ckpt} (BLEU: {best_score:.2f})")
-
+        # --- LƯU KẾT QUẢ RA FILE CSV ---
+        output_filename = f"bleu_results_{direction}.csv"
+        # Mở file với utf-8 đề phòng tên file có ký tự lạ
+        with open(output_filename, mode='w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Checkpoint', 'BLEU_Score']) # Viết Header
+            for ckpt_name, score in results.items():
+                writer.writerow([ckpt_name, f"{score:.2f}"])
+                
+        print("-" * 60)
+        print(f"🏆 [TỔNG KẾT {direction.upper()}] Checkpoint tốt nhất: {best_ckpt} (BLEU: {best_score:.2f})")
+        print(f"💾 Đã lưu toàn bộ điểm số vào file: {output_filename}")
 
 if __name__ == "__main__":
     main()
