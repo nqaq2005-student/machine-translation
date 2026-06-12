@@ -8,10 +8,13 @@ model:
   max_seq_len: 128       # Chiều dài câu tối đa
   dropout: 0.1
 
-# Cấu hình Huấn luyện (Tối ưu cho A100 40GB)
+# Cấu hình Huấn luyện
 training:
-  batch_size: 256        # Batch size lớn tận dụng VRAM
+  batch_size: 64        # Batch size lớn tận dụng VRAM
   epochs: 15
   learning_rate: 5.0e-4
   warmup_steps: 4000
   label_smoothing: 0.1
+  weight_decay: 0.01
+  save_checkpoint_freq: 10000  # Lưu checkpoint sau mỗi 10k bước
+  num_rows: 8000000              

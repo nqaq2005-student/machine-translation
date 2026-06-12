@@ -8,6 +8,7 @@ import torch.distributed as dist
 from tokenizers import Tokenizer
 from tqdm import tqdm
 import sys
+from datasets import load_dataset
 
 from src.model.transformer import Transformer
 from src.data_pipeline.dataset import BilingualDataset
@@ -39,18 +40,13 @@ def main():
     # 2. Khởi tạo dữ liệu
 
     tokenizer = Tokenizer.from_file("data/processed/tokenizer-envi.json")
-    if rank == 0:
-        print("⏳ Đang tải dữ liệu huấn luyện vào RAM...")
-    data_list = []
-    with open("data/processed/train_data.jsonl", "r", encoding="utf-8") as f:
-        for line in f:
-            data_list.append(json.loads(line))
-            if len(data_list) >= 8000000:
-                break
-    if rank == 0:
-        print(f"✅ Đã tải {len(data_list)} cặp câu vào bộ nhớ.")
 
-    dataset = BilingualDataset(data_list, tokenizer, model_cfg['max_seq_len'])
+    dataset_hf = load_dataset("json", data_files="data/processed/train_data.jsonl", split="train")
+    num_rows_to_take = min(train_cfg['num_rows'], len(dataset_hf))
+    dataset_hf = dataset_hf.select(range(num_rows_to_take))
+    
+
+    dataset = BilingualDataset(dataset_hf, tokenizer, model_cfg['max_seq_len'])
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
     dataloader = DataLoader(
         dataset, 
@@ -102,7 +98,7 @@ def main():
         global_step = checkpoint['global_step']
 
         if rank == 0:
-            print(f"Đã khôi phục thành công! Tiếp tục từ epoch {start_epoch}, global step {global_step}.")
+            print(f"Đã khôi phục thành công! Tiếp tục từ epoch {start_epoch+1}, global step {global_step}.")
     
     val_data = load_mixed_validation("data/processed/val_data.jsonl", limit_per_direction=150)
 
@@ -119,7 +115,7 @@ def main():
             disable=(rank != 0),
             bar_format="{desc} {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
             file=sys.stdout,      # Ép ghi thẳng ra luồng chuẩn
-            mininterval=60.0,     # Chỉ in cập nhật log mỗi 60 giây (tránh làm file log quá dài)
+            mininterval=1.0,     # Chỉ in cập nhật log mỗi 1 giây (tránh làm file log quá dài)
             ascii=True
         )
 

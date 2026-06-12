@@ -14,7 +14,7 @@ class PositionwiseFeedForward(nn.Module):
 
     def forward(self, x):
         # Sử dụng hàm kích hoạt GELU để hội tụ tốt hơn
-        return self.w_2(self.dropout(F.gelu(self.w_1(x))))
+        return self.w_2(self.dropout(F.gelu(self.w_1(x), approximate='tanh')))
 
 
 class EncoderLayer(nn.Module):

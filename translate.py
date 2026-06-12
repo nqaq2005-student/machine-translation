@@ -26,17 +26,17 @@ def translate_sentence(model, tokenizer, sentence, direction, max_len, device, c
     src_tensor = torch.tensor(src_input, dtype=torch.int64).unsqueeze(0).to(device)
     encoder_mask = (src_tensor != pad_id).unsqueeze(0).unsqueeze(0).to(device)
 
-    # Lột vỏ bọc DataParallel nếu vô tình mod`el vẫn đang bị bọc
+    # Lột vỏ bọc DataParallel nếu model vẫn đang bị bọc
     actual_model = model.module if hasattr(model, 'module') else model
-
+    full_causal_mask = generate_causal_mask(max_len, device)
     # Kích hoạt ép xung phần cứng (Autocast) để dịch nhanh gấp đôi
-    with torch.no_grad(), torch.autocast(device_type='cuda', dtype=compute_dtype):
+    with torch.no_grad(),   torch.amp.autocast(device_type='cuda', dtype=compute_dtype):
         encoder_output = actual_model.encoder(src_tensor, encoder_mask)
         decoder_input = torch.tensor([[bos_id]], dtype=torch.int64).to(device)
 
         for _ in range(max_len):
             seq_len = decoder_input.size(1)
-            causal_mask = generate_causal_mask(seq_len, device)
+            causal_mask = full_causal_mask[:, :seq_len, :seq_len]
             decoder_pad_mask = (decoder_input != pad_id).unsqueeze(0).unsqueeze(0).to(device)
             decoder_mask = decoder_pad_mask & causal_mask
 

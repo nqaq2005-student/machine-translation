@@ -22,6 +22,10 @@ class BilingualDataset(Dataset):
         self.vi2en_id = tokenizer.token_to_id("<2en>")
         self.en2vi_id = tokenizer.token_to_id("<2vi>")
 
+        self.causal_mask = (torch.triu(
+            torch.ones((1, max_seq_len, max_seq_len)), diagonal=1
+        ).type(torch.int) == 0).unsqueeze(0)
+
     def __len__(self):
         return len(self.data_list)
 
@@ -75,14 +79,9 @@ class BilingualDataset(Dataset):
         # Decoder Pad Mask: Giống hệt Encoder Mask nhưng áp dụng cho decoder_input
         decoder_pad_mask = (decoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
 
-        # Causal Mask: Ma trận tam giác (True ở tam giác dưới, False ở tam giác trên)
-        causal_mask = torch.triu(
-            torch.ones((1, self.max_seq_len, self.max_seq_len)), diagonal=1
-        ).type(torch.int) == 0
-
         # Kết hợp hai Mask của Decoder bằng phép AND (Chỉ True khi thỏa mãn cả 2 điều kiện)
         # Shape: (1, max_seq_len, max_seq_len)
-        decoder_mask = decoder_pad_mask & causal_mask
+        decoder_mask = decoder_pad_mask & self.causal_mask
 
         return {
             "encoder_input": encoder_input,  # (max_seq_len)
