@@ -1,35 +1,29 @@
-import json
 import torch
-import random
-import numpy as np
 import yaml
+import re
+import os
+import glob
+import json
+from typing import List, Dict, Optional
 
-def load_jsonl_dataset(file_path, direction="en2vi", limit=None):
-    sources, references = [], []
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            for line in f:
-                item = json.loads(line)
-                if item.get("direction") == direction:
-                    sources.append(item["src"])
-                    references.append(item["tgt"])
-                    if limit and len(sources) >= limit: break
-        return sources, references
-    except Exception as e:
-        print(f"Lỗi đọc {file_path}: {e}")
-        return [], []
+def get_step_number(filepath : str) -> int:
 
-def set_seed(seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    filename = os.path.basename(filepath)
 
-def save_checkpoint(state, filename):
-    torch.save(state, filename)
+    match = re.search(r'step(\d+)', filename)
+    if match:
+        return int(match.group(1))  # Ép về số nguyên (VD: 20000)
+    return -1  # Nếu là file rác không có số, cho điểm -1 để nó xếp bét
 
-def load_checkpoint(filename, device):
-    return torch.load(filename, map_location=device)
+
+def get_latest_checkpoint(ckpt_dir="checkpoints"):
+    """Tự động tìm file checkpoint mới nhất trong thư mục."""
+    files = glob.glob(os.path.join(ckpt_dir, "*.pt"))
+    if not files:
+        return None
+
+    return max(files, key=get_step_number)
+
 
 def get_lr_scheduler(optimizer, warmup_steps=4000):
 
@@ -46,33 +40,26 @@ def load_config(config_path="configs/config.yaml"):
         return yaml.safe_load(f)
 
 
-def load_mixed_validation(file_path, limit_per_direction=150):
-    """
-    Tải tập validation chứa cả 2 chiều dịch.
-    Trả về danh sách các dictionary: [{"src": "...", "tgt": "...", "direction": "..."}]
-    """
-    val_data = []
-    count_en2vi = 0
-    count_vi2en = 0
+def clean_detokenize(text):
+    """Dọn dẹp khoảng trắng thừa trước dấu câu để văn bản tự nhiên hơn."""
+    return re.sub(r'\s+([?.!,:;\'"])', r'\1', text)
 
+
+def load_jsonl_data(file_path: str, limit: Optional[int] = None, direction: Optional[str] = None) -> List[Dict]:
+    """Đọc dữ liệu JSONL, hỗ trợ lọc theo chiều dịch và giới hạn số lượng."""
+    data = []
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
-                import json
-                item = json.loads(line)
+                item = json.loads(line.strip())
 
-                if item.get("direction") == "en2vi" and count_en2vi < limit_per_direction:
-                    val_data.append(item)
-                    count_en2vi += 1
-                elif item.get("direction") == "vi2en" and count_vi2en < limit_per_direction:
-                    val_data.append(item)
-                    count_vi2en += 1
+                if direction is None or item.get("direction") == direction:
+                    data.append(item)
+                    if limit and len(data) >= limit:
+                        break
 
-                # Dừng đọc nếu đã đủ 300 câu (150 mỗi chiều)
-                if count_en2vi >= limit_per_direction and count_vi2en >= limit_per_direction:
-                    break
+        return data
 
-        return val_data
     except Exception as e:
-        print(f"Lỗi đọc {file_path}: {e}")
+        print(f"❌ Lỗi đọc file {file_path}: {e}")
         return []

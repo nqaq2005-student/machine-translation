@@ -1,24 +1,29 @@
 import os
-import json
-import glob
 import torch
+import gc
+import sys
 import torch.nn as nn
 from torch.utils.data import DataLoader, DistributedSampler
 import torch.distributed as dist
 from tokenizers import Tokenizer
 from tqdm import tqdm
-import sys
 from datasets import load_dataset
 
-from src.model.transformer import Transformer
-from src.data_pipeline.dataset import BilingualDataset
+
+from src.model import Transformer
+from src.data_pipeline import BilingualDataset
 from src.utils.metrics import calculate_bleu
-from src.utils.helpers import load_mixed_validation, get_lr_scheduler, load_config
+from src.utils.helpers import load_jsonl_data, get_lr_scheduler, load_config, get_latest_checkpoint
 
 
 def setup(rank, world_size):
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
+    dist.init_process_group(
+        backend="nccl",
+        rank=rank,
+        world_size=world_size,
+        device_id=torch.device(f"cuda:{rank}")
+    )
 
 def cleanup():
     dist.destroy_process_group()
@@ -81,10 +86,10 @@ def main():
     # 5. KHÔI PHỤC CHECKPOINT
     start_epoch = 0
     global_step = 0
-    checkpoint_files = glob.glob("checkpoints/*.pt")
+    checkpoint_dir = "checkpoints"
     
-    if checkpoint_files:
-        latest_checkpoint = max(checkpoint_files, key=os.path.getmtime)
+    if checkpoint_dir:
+        latest_checkpoint = get_latest_checkpoint(checkpoint_dir)
         if rank == 0:
             print(f"🔄 Tìm thấy Checkpoint: {latest_checkpoint}")
         checkpoint = torch.load(latest_checkpoint, map_location=f'cuda:{rank}')
@@ -100,7 +105,7 @@ def main():
         if rank == 0:
             print(f"Đã khôi phục thành công! Tiếp tục từ epoch {start_epoch+1}, global step {global_step}.")
     
-    val_data = load_mixed_validation("data/processed/val_data.jsonl", limit_per_direction=150)
+    val_data = load_jsonl_data("data/processed/val_data.jsonl", limit = 300)
 
     # 6. Vòng lặp huấn luyện chính
     model.train()
@@ -108,7 +113,7 @@ def main():
 
     for epoch in range(start_epoch, train_cfg['epochs']):
         total_loss = 0
-        dataloader.sampler.set_epoch(epoch)
+        dataloader.sampler.set_epoch(epoch) # type: ignore
         progress_bar = tqdm(
             dataloader,
             desc=f"Epoch {epoch+1}/{train_cfg['epochs']}", 
@@ -133,7 +138,7 @@ def main():
                 output = model(encoder_input, decoder_input, encoder_mask, decoder_mask)
                 loss = loss_fn(output.reshape(-1, output.shape[-1]), label.reshape(-1))
 
-            scaler.scale(loss).backward()
+            scaler.scale(loss).backward() # type: ignore
             scaler.step(optimizer)
             scaler.update()
             lr_scheduler.step()
@@ -191,6 +196,7 @@ def main():
 
         dist.barrier() # Đồng bộ hóa tất cả các tiến trình trước khi tiếp tục sang epoch tiếp theo
 
+        gc.collect()
     cleanup()
 
 
