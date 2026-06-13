@@ -1,39 +1,48 @@
 import torch
 import sacrebleu
-from translate import translate_sentence
+from tqdm import tqdm
+from .translate import translate_batch
+from .helpers import clean_detokenize
 
 
-def calculate_bleu(model, tokenizer, val_data, max_len, device,                      ):
+def calculate_bleu(model, tokenizer, val_data, max_len, device, compute_dtype, batch_size=32):
     """
-    Tính điểm BLEU cho danh sách hỗn hợp các câu en2vi và vi2en.
+    Tính điểm BLEU cho danh sách hỗn hợp các câu en2vi và vi2en bằng Batch Inference.
     """
     model.eval()
     predictions = []
     references = []
 
-    # Sử dụng torch.no_grad() để tránh tràn VRAM
+    # Cắt dữ liệu thành từng khối (chunk) có độ lớn bằng batch_size
     with torch.no_grad():
-        for item in val_data:
-            src_text = item["src"]
-            ref_text = item["tgt"]
-            direction = item["direction"]  # Lấy chiều dịch (en2vi hoặc vi2en) từ dữ liệu
+        for i in tqdm(range(0, len(val_data), batch_size), desc="Đang dịch (Batched)"):
+            # Trích xuất 1 batch dữ liệu
+            batch = val_data[i:i + batch_size]
 
-            pred_text = translate_sentence(
+            src_texts = [item["src"] for item in batch]
+            ref_texts = [item["tgt"] for item in batch]
+            directions = [item["direction"] for item in batch]
+
+            # Gọi hàm dịch theo batch
+            pred_texts = translate_batch(
                 model=model,
                 tokenizer=tokenizer,
-                sentence=src_text,
-                direction=direction,
+                sentences=src_texts,
+                directions=directions,
                 max_len=max_len,
                 device=device,
                 compute_dtype=compute_dtype
             )
 
-            predictions.append(pred_text)
-            references.append(ref_text)
+            # Dọn dẹp khoảng trắng cho toàn bộ batch
+            clean_preds = [clean_detokenize(text) for text in pred_texts]
+            clean_refs = [clean_detokenize(text) for text in ref_texts]
+
+            predictions.extend(clean_preds)
+            references.extend(clean_refs)
 
     model.train()
 
-    # sacrebleu yêu cầu references phải nằm trong list của list
     if not predictions:
         return 0.0
 

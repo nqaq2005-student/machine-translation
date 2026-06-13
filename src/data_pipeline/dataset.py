@@ -22,9 +22,10 @@ class BilingualDataset(Dataset):
         self.vi2en_id = tokenizer.token_to_id("<2en>")
         self.en2vi_id = tokenizer.token_to_id("<2vi>")
 
+        # Mặt nạ tránh nhìn trước tương lai
         self.causal_mask = (torch.triu(
             torch.ones((1, max_seq_len, max_seq_len)), diagonal=1
-        ).type(torch.int) == 0).unsqueeze(0)
+        ).type(torch.int) == 0)
 
     def __len__(self):
         return len(self.data_list)
@@ -72,11 +73,10 @@ class BilingualDataset(Dataset):
 
         # TẠO ATTENTION MASKS (Che lấp thông tin)
 
-        # Encoder Mask: Đánh dấu True ở những vị trí CÓ TỪ (khác PAD), False ở vị trí PAD.
+        # Đánh dấu True ở những vị trí CÓ TỪ (khác PAD), False ở vị trí PAD.
         # Shape: (1, 1, max_seq_len) để chuẩn bị broadcast trên nhiều Attention Heads
         encoder_mask = (encoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
 
-        # Decoder Pad Mask: Giống hệt Encoder Mask nhưng áp dụng cho decoder_input
         decoder_pad_mask = (decoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
 
         # Kết hợp hai Mask của Decoder bằng phép AND (Chỉ True khi thỏa mãn cả 2 điều kiện)
@@ -86,9 +86,9 @@ class BilingualDataset(Dataset):
         return {
             "encoder_input": encoder_input,  # (max_seq_len)
             "decoder_input": decoder_input,  # (max_seq_len)
-            "encoder_mask": encoder_mask,  # (1, 1, max_seq_len)
-            "decoder_mask": decoder_mask,  # (1, max_seq_len, max_seq_len)
-            "label": label,  # (max_seq_len)
-            "src_text": src_text,  # Lưu lại text gốc để debug/tính BLEU
-            "tgt_text": tgt_text
+            "encoder_mask":  encoder_mask,   # (1, 1, max_seq_len)
+            "decoder_mask":  decoder_mask,   # (1, max_seq_len, max_seq_len)
+            "label":         label,          # (max_seq_len)
+            "src_text":      src_text,       # Lưu lại text gốc để debug/tính BLEU
+            "tgt_text":      tgt_text
         }
