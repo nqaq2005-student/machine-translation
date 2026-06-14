@@ -10,7 +10,7 @@ from src.model.transformer import Transformer
 from src.data_pipeline.dataset import BilingualDataset
 from src.utils.metrics import calculate_bleu
 from src.utils.helpers import load_jsonl_data, get_lr_scheduler, get_latest_checkpoint
-from src.utils.helpers import load_config
+from src.utils.helpers import load_config, get_compute_dtype
 
 
 def main():
@@ -23,23 +23,8 @@ def main():
     print(f"🚀 Đang khởi động trên thiết bị: {device.type} (SINGLE GPU)")
 
     # Tối ưu hóa phần cứng động (Dynamic Hardware Optimization)
-    use_scaler = False
-    compute_dtype = torch.float32
+    compute_dtype, use_scaler = get_compute_dtype()
 
-    if torch.cuda.is_available():
-        gpu_name = torch.cuda.get_device_name(0)
-        capability = torch.cuda.get_device_capability(0)
-        print(f"💻 Thông tin GPU: {gpu_name} (Compute Capability: {capability[0]}.{capability[1]})")
-
-        if capability[0] >= 8:  # Kiến trúc Ampere trở lên (A100, RTX 30/40)
-            print("⚡ Chế độ A100/Ampere: Kích hoạt bfloat16 và TF32 (Không cần Scaler).")
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
-            compute_dtype = torch.bfloat16
-        else:  # Kiến trúc Turing/Volta (T4, P100, V100)
-            print("⚡ Chế độ T4/Turing: Kích hoạt float16 và GradScaler chống tràn số.")
-            compute_dtype = torch.float16
-            use_scaler = True
 
     # 2. KHỞI TẠO DỮ LIỆU
     tokenizer = Tokenizer.from_file("data/processed/tokenizer-envi.json")
