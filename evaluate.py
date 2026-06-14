@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tokenizers import Tokenizer
-from tqdm import tqdm  # ⚡ THÊM THƯ VIỆN THANH TIẾN TRÌNH Ở ĐÂY
+from tqdm import tqdm
 from src.model.transformer import Transformer
 from src.utils.metrics import calculate_bleu
 from src.utils.helpers import get_step_number, load_jsonl_data, load_config
@@ -115,7 +115,7 @@ def main():
     output_csv = "evaluation_results.csv"
     MAX_LEN = 128
 
-    print(f"🚀 Khởi động Evaluation Script trên thiết bị: {device}")
+    print(f"🚀 Khởi động Evaluation Script trên thiết bị: {device.type}")
 
     # --- 2. Khởi tạo Tokenizer ---
     tokenizer = Tokenizer.from_file("data/processed/tokenizer-envi.json")

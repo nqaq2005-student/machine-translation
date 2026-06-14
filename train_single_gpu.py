@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from tokenizers import Tokenizer
-import os
 import json
 from tqdm import tqdm
 
@@ -11,7 +10,7 @@ from src.model.transformer import Transformer
 from src.data_pipeline.dataset import BilingualDataset
 from src.utils.metrics import calculate_bleu
 from src.utils.helpers import load_jsonl_data, get_lr_scheduler, get_latest_checkpoint
-from src.utils.helpers import load_config
+from src.utils.helpers import load_config, get_compute_dtype
 
 
 def main():
@@ -24,23 +23,8 @@ def main():
     print(f"🚀 Đang khởi động trên thiết bị: {device.type} (SINGLE GPU)")
 
     # Tối ưu hóa phần cứng động (Dynamic Hardware Optimization)
-    use_scaler = False
-    compute_dtype = torch.float32
+    compute_dtype, use_scaler = get_compute_dtype()
 
-    if torch.cuda.is_available():
-        gpu_name = torch.cuda.get_device_name(0)
-        capability = torch.cuda.get_device_capability(0)
-        print(f"💻 Thông tin GPU: {gpu_name} (Compute Capability: {capability[0]}.{capability[1]})")
-
-        if capability[0] >= 8:  # Kiến trúc Ampere trở lên (A100, RTX 30/40)
-            print("⚡ Chế độ A100/Ampere: Kích hoạt bfloat16 và TF32 (Không cần Scaler).")
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
-            compute_dtype = torch.bfloat16
-        else:  # Kiến trúc Turing/Volta (T4, P100, V100)
-            print("⚡ Chế độ T4/Turing: Kích hoạt float16 và GradScaler chống tràn số.")
-            compute_dtype = torch.float16
-            use_scaler = True
 
     # 2. KHỞI TẠO DỮ LIỆU
     tokenizer = Tokenizer.from_file("data/processed/tokenizer-envi.json")
@@ -76,36 +60,29 @@ def main():
     # 5. KHÔI PHỤC CHECKPOINT
     start_epoch = 0
     global_step = 0
-    checkpoint_dir = "chekpoints"
+    checkpoint_dir = "checkpoints"
 
     if checkpoint_dir:
         latest_checkpoint = get_latest_checkpoint(checkpoint_dir)
-        print(f"🔄 Tìm thấy Checkpoint: {latest_checkpoint}")
-        checkpoint = torch.load(latest_checkpoint, map_location=device)
+        if latest_checkpoint:
+            print(f"🔄 Tìm thấy Checkpoint: {latest_checkpoint}")
+            checkpoint = torch.load(latest_checkpoint, map_location=device)
 
-        # ⚡ Tự động lột vỏ "module." nếu lỡ load phải file checkpoint cũ của Đa GPU
-        state_dict = checkpoint['model_state_dict']
-        clean_state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+            # ⚡ Tự động lột vỏ "module." nếu lỡ load phải file checkpoint cũ của Đa GPU
+            state_dict = checkpoint['model_state_dict']
+            clean_state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
 
-        model.load_state_dict(clean_state_dict)
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            model.load_state_dict(clean_state_dict)
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        start_epoch = checkpoint.get('epoch', 0)
-        global_step = checkpoint.get('global_step', 0)
-
-        if 'scheduler_state_dict' in checkpoint:
-            lr_scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        else:
-            for _ in range(global_step):
-                lr_scheduler.step()
-
-        if 'scaler_state_dict' in checkpoint and use_scaler:
+            start_epoch = checkpoint.get('epoch', 0)
+            global_step = checkpoint.get('global_step', 0)
+            lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
             scaler.load_state_dict(checkpoint['scaler_state_dict'])
 
-        if 'epoch_' in os.path.basename(latest_checkpoint):
-            start_epoch += 1
-
-        print(f"✅ Khôi phục thành công! Sẽ tiếp tục từ Epoch {start_epoch + 1}, Step {global_step}.")
+            print(f"✅ Khôi phục thành công! Sẽ tiếp tục từ Epoch {start_epoch + 1}, Step {global_step}.")
+        else:
+            print("✨ Bắt đầu huấn luyện từ đầu (From scratch).")
     else:
         print("✨ Bắt đầu huấn luyện từ đầu (From scratch).")
 
@@ -168,7 +145,7 @@ def main():
                     'global_step': global_step,
                     'model_state_dict': model.state_dict(),  # ⚡ Chỉ lưu state_dict mộc mạc của model
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'scheduler_state_dict': lr_scheduler.state_dict(),
+                    'lr_scheduler_state_dict': lr_scheduler.state_dict(),
                     'scaler_state_dict': scaler.state_dict() if use_scaler else {},
                     'train_loss': loss.item(),  # Lưu thêm loss nếu bạn cần vẽ biểu đồ sau này
                 }, checkpoint_path)
@@ -191,7 +168,7 @@ def main():
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': lr_scheduler.state_dict(),
-            'scaler_state_dict': scaler.state_dict() if use_scaler else {},
+            'lr_scheduler_state_dict': scaler.state_dict() if use_scaler else {},
             'loss': avg_loss,
             'bleu_score': epoch_bleu,
         }, f"checkpoints/transformer_epoch_{epoch + 1}.pt")

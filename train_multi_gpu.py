@@ -13,7 +13,7 @@ from datasets import load_dataset
 from src.model import Transformer
 from src.data_pipeline import BilingualDataset
 from src.utils.metrics import calculate_bleu
-from src.utils.helpers import load_jsonl_data, get_lr_scheduler, load_config, get_latest_checkpoint
+from src.utils.helpers import load_jsonl_data, get_lr_scheduler, load_config, get_latest_checkpoint,get_compute_dtype
 
 
 def setup(rank, world_size):
@@ -39,9 +39,7 @@ def main():
 
     setup(rank, world_size)
 
-    compute_dtype = torch.float16
-    use_scaler = True
-
+    compute_dtype, use_scaler = get_compute_dtype()
     # 2. Khởi tạo dữ liệu
 
     tokenizer = Tokenizer.from_file("data/processed/tokenizer-envi.json")
