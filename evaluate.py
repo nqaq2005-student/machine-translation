@@ -54,7 +54,7 @@ def evaluate_all_checkpoints(ckpt_dir, output_csv, model, tokenizer, val_dataloa
 
     # 2. Cài đặt hàm Loss (Chỉ định bỏ qua việc tính loss cho token [PAD])
     pad_id = tokenizer.token_to_id("[PAD]")
-    criterion = nn.CrossEntropyLoss(ignore_index=pad_id)
+    criterion = nn.CrossEntropyLoss(ignore_index=pad_id, label_smoothing=0.1)
 
     # 3. Mở file CSV để ghi kết quả liên tục
     with open(output_csv, mode='w', newline='', encoding='utf-8') as f:
