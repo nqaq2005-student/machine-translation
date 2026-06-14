@@ -66,7 +66,7 @@ def main():
         latest_checkpoint = get_latest_checkpoint(checkpoint_dir)
         if latest_checkpoint:
             print(f"🔄 Tìm thấy Checkpoint: {latest_checkpoint}")
-            checkpoint = torch.load(latest_checkpoint, map_location=device)
+            checkpoint = torch.load(latest_checkpoint, map_location=device, weights_only=False)
 
             # ⚡ Tự động lột vỏ "module." nếu lỡ load phải file checkpoint cũ của Đa GPU
             state_dict = checkpoint['model_state_dict']
@@ -143,11 +143,11 @@ def main():
                 torch.save({
                     'epoch': epoch,
                     'global_step': global_step,
-                    'model_state_dict': model.state_dict(),  # ⚡ Chỉ lưu state_dict mộc mạc của model
+                    'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'lr_scheduler_state_dict': lr_scheduler.state_dict(),
-                    'scaler_state_dict': scaler.state_dict() if use_scaler else {},
-                    'train_loss': loss.item(),  # Lưu thêm loss nếu bạn cần vẽ biểu đồ sau này
+                    'scaler_state_dict': scaler.state_dict(),
+                    'loss': loss.item(),
                 }, checkpoint_path)
 
                 tqdm.write(f"💾 [Lưu] Step {global_step} | Loss: {loss.item():.4f}  -> {checkpoint_path}")
@@ -167,8 +167,8 @@ def main():
             'global_step': global_step,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': lr_scheduler.state_dict(),
-            'lr_scheduler_state_dict': scaler.state_dict() if use_scaler else {},
+            'lr_scheduler_state_dict': lr_scheduler.state_dict(),
+            'scaler_state_dict': scaler.state_dict(),
             'loss': avg_loss,
             'bleu_score': epoch_bleu,
         }, f"checkpoints/transformer_epoch_{epoch + 1}.pt")
